@@ -1,0 +1,157 @@
+---
+title: "Analysis of data from fitness tracking device"
+author: "Harpratap Singh Layal"
+date: "May 1, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/BA-R/R-Scripts")
+dfrAct <- read.csv("./data/activity.csv", header=T, stringsAsFactors = F)
+library(dplyr)
+library(tidyr)
+```  
+**Overview:**  This project is analysis of activity data collected from a fitness tracker like a wearable or smart watch. The data contains the number of steps taken in 5 minute intervals throughout the day on the given dates.  
+
+##Part 1   
+*Pre imputation analysis of data for determining the acceptable and non-acceptable values in the given data.*  
+
+1. Total Number of records with missing values  
+```{r echo=TRUE}
+  dfrBad <- filter(dfrAct, (is.na(dfrAct$steps) | is.na(dfrAct$date) | is.na(dfrAct$interval) ))
+  nrow(dfrBad)
+```
+2. Total number of records with missing values per day  
+```{r echo=TRUE}
+  data.frame(table(dfrBad$date))
+```
+
+##Part 2  
+
+1. Number of valid records across all days  
+```{r echo=TRUE}
+statusAct <- complete.cases(dfrAct)
+dfrGood <- dfrAct[statusAct,]
+nrow(dfrGood)
+```
+#Data Imputation  
+**Strategy:**  Substitute the mean of the particular interval across all days for the missing data  
+**Reason:** Mean of the steps taken in that particular time interval most likely represents the number of steps taken, as human behaviour is repetitive and we tend to do similar amount of activity in certain time of the day.  
+
+```{r echo=TRUE}
+dfrGood.GroupIntervalAvg <- summarize(group_by(dfrGood, interval), mean(steps))
+
+dfrClean <- dfrAct %>% 
+            group_by(interval) %>% 
+            mutate(steps = replace(steps, is.na(steps), floor(mean(steps, na.rm = T))))
+write.csv(dfrClean, "actclean.csv", row.names = F)
+dfrCleaned <- read.csv("actclean.csv", header = T, stringsAsFactors = F)
+```  
+  
+2. Total number of steps taken across all days  
+```{r echo= TRUE}
+summarise(dfrCleaned, sum(steps))
+```  
+
+3. Average number of steps taken across all days  
+```{r echo= TRUE}
+dfrAvgSteps <- summarize(group_by(dfrCleaned, date), mean(steps))
+print(dfrAvgSteps)
+plot(as.Date(dfrAvgSteps$date), dfrAvgSteps$`mean(steps)`, pch=1,type="l", col="blue",
+       main="Average steps per day",
+       xlab="Date",
+       ylab="Steps")
+```  
+
+4. 5-minute interval, across all the days containing the maximum number of steps  
+```{r echo= TRUE}
+dfrCleaned.MaxSteps <- dfrCleaned %>%
+                arrange(desc(steps)) %>%
+                head(1) %>%
+                select(-date)
+print(dfrCleaned.MaxSteps)
+```  
+
+5. 5-minute interval, across all the days containing the minimum number of steps  
+```{r echo= TRUE}
+MinSteps <- dfrCleaned %>%
+            arrange(steps) %>%
+            head(1) %>%
+            select(-date,-interval)
+IntMinSteps <- as.integer(MinSteps)
+dfrCleaned.MinSteps <- filter(dfrCleaned, steps == IntMinSteps)
+head(dfrCleaned.MinSteps)
+```  
+
+6. Number of valid records per day  
+```{r echo= TRUE}
+dfrValidRecords <- data.frame(table(dfrCleaned$date))
+print(dfrValidRecords)
+```  
+
+7. Total number of steps taken per day  
+```{r echo= TRUE}
+dfrStepPerDay <- summarize(group_by(dfrCleaned, date), sum(steps))
+print(dfrStepPerDay)
+plot(as.Date(dfrStepPerDay$date), dfrStepPerDay$`sum(steps)`, pch=1,type="l", col="blue",
+       main="Total steps per day",
+       xlab="Date",
+       ylab="Steps")
+```  
+
+8. Average number of steps taken per day  
+```{r echo= TRUE}
+dfrAvgSteps <- summarize(group_by(dfrCleaned, date), mean(steps))
+avgStepsPerDay <- mean(dfrStepPerDay$`sum(steps)`)
+print(avgStepsPerDay)
+```  
+
+9. The day on which the individual walked the most  
+```{r echo= TRUE}
+dfrDayMostWalked <- dfrStepPerDay %>%
+                        arrange(desc(`sum(steps)`)) %>%
+                        head(1) %>%
+                        select(date)
+print(dfrDayMostWalked)
+
+```  
+
+10. The day on which day the individual walked the least  
+```{r echo= TRUE}
+dfrDayLeastWalked <- dfrStepPerDay %>%
+                      arrange(`sum(steps)`) %>%
+                      head(1) %>%
+                      select(date)
+print(dfrDayLeastWalked)
+```  
+
+#Summary Report  
+
+1. Impact of imputing  missing data on total daily number of steps  
+```{r echo= TRUE}
+as.integer(summarise(dfrCleaned, sum(steps))) - as.integer(summarise(dfrGood, sum(steps)))
+as.integer(summarise(dfrCleaned, mean(steps))) - as.integer(summarise(dfrGood, mean(steps)))
+```  
+The total number of steps taken has increased overall due to imputation of data. But average remains the same, hence the data imputation strategy can be considered a good one as there is no change in the behaviour of the data.  
+
+2. Differences in activity pattern during weekdays and weekends  
+```{r echo= TRUE}
+dfrCleaned$week <- ifelse(weekdays(as.Date(dfrCleaned$date)) %in% c("Saturday","Sunday"), "weekend","weekday")
+  dfrWeekday <- filter(dfrCleaned, week == "weekday")
+  dfrWeekend <- filter(dfrCleaned, week == "weekend")
+  par(mfrow=c(2,1))
+  plot(dfrWeekday$interval, dfrWeekday$steps, pch=2, col="red",
+       main="Weekday activity",
+       xlab="Intervals",
+       ylab="Steps")
+  plot(dfrWeekend$interval, dfrWeekend$steps, pch=1, col="blue",
+       main="Weekend activity",
+       xlab="Intervals",
+       ylab="Steps")
+```  
+
+
+The comparison graphs of weekends and weekdays shows us that the user is **active for a longer duration during weekdays and lazy during weekends**. The weekday activity starts quite earlt at around 500 intervals and lasts a little longer than 2000 intervals.  
+The activity of the user on weekends starts around 1000 intervals and reduces around 2000 intervals.  
+The peak activity during weekdays is generally reached in between 500 and 1000 intervals. On the other hand, the peak is reached later during the weekends around the range of 1000-1500 intervals.
